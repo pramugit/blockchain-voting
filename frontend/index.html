@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VoteChain — Decentralized Voting</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #06070D;
+    --bg-soft: #0C0E19;
+    --surface: rgba(255,255,255,.045);
+    --surface-strong: rgba(255,255,255,.07);
+    --border: rgba(255,255,255,.09);
+    --text: #F3F4FB;
+    --text-muted: #8B90A6;
+    --violet: #7C5CFF;
+    --cyan: #22E5C8;
+    --pink: #FF5FA8;
+    --gradient: linear-gradient(120deg, var(--violet), var(--cyan));
+    --success: #2FE6A0;
+    --success-bg: rgba(47,230,160,.12);
+    --danger: #FF5D7A;
+    --danger-bg: rgba(255,93,122,.12);
+    --warning: #FFC24B;
+    --warning-bg: rgba(255,194,75,.12);
+    --radius: 18px;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); }
+  body {
+    font-family: 'Inter', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+    color: var(--text);
+    margin: 0;
+    padding-bottom: 80px;
+    min-height: 100vh;
+    position: relative;
+    overflow-x: hidden;
+  }
+  h1, h2, h3 { font-family: 'Space Grotesk', 'Inter', sans-serif; }
+
+  /* Ambient background glow */
+  body::before, body::after {
+    content: ""; position: fixed; border-radius: 50%; filter: blur(110px); z-index: 0; pointer-events: none;
+  }
+  body::before { width: 520px; height: 520px; background: var(--violet); opacity: .28; top: -180px; left: -140px; }
+  body::after { width: 480px; height: 480px; background: var(--cyan); opacity: .18; top: 220px; right: -160px; }
+  .grid-overlay {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image: radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);
+    background-size: 26px 26px;
+    mask-image: linear-gradient(to bottom, black, transparent 70%);
+  }
+
+  a { color: var(--cyan); }
+
+  /* Header */
+  header {
+    position: sticky; top: 0; z-index: 30;
+    background: rgba(6,7,13,.72);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 28px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-mark {
+    width: 36px; height: 36px; border-radius: 11px;
+    background: var(--gradient);
+    display: flex; align-items: center; justify-content: center;
+    color: #06070D; font-weight: 800; font-size: 15px;
+    box-shadow: 0 0 22px rgba(124,92,255,.55);
+  }
+  .brand-text h1 { font-size: 17px; margin: 0; font-weight: 700; letter-spacing: -.01em; }
+  .brand-text .tag { font-size: 11px; color: var(--text-muted); }
+
+  .wallet-area { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12.5px; font-weight: 600;
+    padding: 7px 13px; border-radius: 999px;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .dot.green { background: var(--success); box-shadow: 0 0 8px var(--success); }
+  .dot.red { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+  .dot.grey { background: #565B70; }
+
+  .btn {
+    font-family: 'Inter', inherit;
+    border: none; border-radius: 12px; cursor: pointer;
+    font-weight: 600; font-size: 13.5px;
+    padding: 11px 20px;
+    background: var(--gradient); color: #06070D;
+    transition: transform .08s ease, box-shadow .2s ease, opacity .15s ease;
+    display: inline-flex; align-items: center; gap: 8px;
+    box-shadow: 0 0 0 rgba(124,92,255,0);
+  }
+  .btn:hover { box-shadow: 0 0 24px rgba(124,92,255,.45); }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; transform: none; }
+  .btn.secondary { background: var(--surface-strong); color: var(--text); border: 1px solid var(--border); }
+  .btn.secondary:hover { box-shadow: none; background: rgba(255,255,255,.1); }
+  .btn.danger { background: linear-gradient(120deg, #FF5D7A, #FF8A5D); color: #1a0a0a; }
+  .btn.small { padding: 8px 13px; font-size: 12.5px; }
+  .btn.full { width: 100%; justify-content: center; }
+
+  .spinner {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid rgba(6,7,13,.35); border-top-color: #06070D;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Hero */
+  .hero { position: relative; z-index: 1; max-width: 980px; margin: 0 auto; padding: 56px 20px 20px; text-align: center; }
+  .hero .eyebrow {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; color: var(--cyan);
+    background: rgba(34,229,200,.1); border: 1px solid rgba(34,229,200,.3);
+    padding: 5px 14px; border-radius: 999px; margin-bottom: 18px;
+  }
+  .hero h2 {
+    font-size: clamp(28px, 5vw, 44px); font-weight: 700; line-height: 1.15; margin: 0 0 14px; letter-spacing: -.02em;
+  }
+  .hero h2 .grad { background: var(--gradient); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero p { color: var(--text-muted); font-size: 15px; max-width: 520px; margin: 0 auto; }
+
+  .stat-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 28px; }
+  .stat-chip {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 14px 22px; min-width: 130px;
+    backdrop-filter: blur(10px);
+  }
+  .stat-chip .v { font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 700; }
+  .stat-chip .k { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
+
+  /* Layout */
+  main { position: relative; z-index: 1; max-width: 980px; margin: 10px auto 0; padding: 0 20px; }
+  .section-title {
+    font-size: 12.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .08em; color: var(--text-muted); margin: 34px 0 14px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    backdrop-filter: blur(14px);
+    padding: 22px 24px;
+    margin-bottom: 18px;
+    animation: fadeIn .25s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  .empty-state { text-align: center; padding: 52px 20px; color: var(--text-muted); }
+  .empty-state .icon { font-size: 34px; margin-bottom: 10px; }
+
+  label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text-muted); margin: 14px 0 6px; }
+  input, select {
+    width: 100%; padding: 11px 13px; font-size: 14px;
+    border: 1px solid var(--border); border-radius: 10px;
+    font-family: inherit; background: rgba(255,255,255,.04); color: var(--text);
+    transition: border-color .15s ease, background .15s ease;
+  }
+  input::placeholder { color: #565B70; }
+  input:focus, select:focus { outline: none; border-color: var(--violet); background: rgba(124,92,255,.06); }
+  select option { background: #12141F; color: var(--text); }
+  .field-row { display: flex; gap: 12px; }
+  .field-row > div { flex: 1; }
+
+  .chip-preview { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip-preview span {
+    background: rgba(124,92,255,.14); color: #C4B8FF;
+    font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+    border: 1px solid rgba(124,92,255,.3);
+  }
+
+  .elections-grid { display: grid; grid-template-columns: 1fr; gap: 18px; }
+  .election-card { padding: 0; overflow: hidden; }
+  .election-head { padding: 20px 24px 16px; }
+  .election-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .election-title-row h3 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+  .status-badge {
+    font-size: 10.5px; font-weight: 700; padding: 4px 11px; border-radius: 999px;
+    white-space: nowrap; text-transform: uppercase; letter-spacing: .05em;
+  }
+  .status-badge.open { background: var(--success-bg); color: var(--success); box-shadow: inset 0 0 0 1px rgba(47,230,160,.35); }
+  .status-badge.pending { background: rgba(124,92,255,.12); color: #C4B8FF; box-shadow: inset 0 0 0 1px rgba(124,92,255,.35); }
+  .status-badge.closed { background: var(--surface-strong); color: var(--text-muted); }
+  .time-note { font-size: 12.5px; color: var(--text-muted); margin-top: 4px; }
+
+  .election-body { padding: 4px 24px 22px; border-top: 1px solid var(--border); }
+  .notice {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 500; padding: 11px 15px; border-radius: 12px;
+    margin: 16px 0 6px;
+  }
+  .notice.info { background: rgba(124,92,255,.1); color: #C4B8FF; }
+  .notice.warn { background: var(--warning-bg); color: var(--warning); }
+  .notice.success { background: var(--success-bg); color: var(--success); }
+
+  .option-list { display: flex; flex-direction: column; gap: 9px; margin: 16px 0; }
+  .option-chip {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 15px; border-radius: 12px; border: 1.5px solid var(--border);
+    cursor: pointer; font-size: 14px; font-weight: 600;
+    transition: border-color .12s ease, background .12s ease;
+    background: rgba(255,255,255,.02);
+  }
+  .option-chip:hover { border-color: var(--violet); }
+  .option-chip.selected { border-color: var(--violet); background: rgba(124,92,255,.12); color: #E5DFFF; }
+  .option-chip .current-tag {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    background: var(--gradient); color: #06070D; padding: 2px 9px; border-radius: 999px;
+  }
+
+  .results { margin-top: 18px; }
+  .results-title { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 12px; }
+  .result-row { margin-bottom: 12px; }
+  .result-row .r-label { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; margin-bottom: 5px; }
+  .result-row .r-count { color: var(--text-muted); font-weight: 500; }
+  .bar-bg { background: rgba(255,255,255,.06); border-radius: 6px; height: 10px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 6px; transition: width .5s ease; background: var(--gradient); }
+
+  .log {
+    font-family: 'Consolas', 'SFMono-Regular', monospace; font-size: 12px; line-height: 1.6;
+    color: #A9AFC7; white-space: pre-wrap; max-height: 220px; overflow-y: auto;
+  }
+  .log .line { color: var(--text); }
+  .log .line.err { color: var(--danger); }
+  .log .line.ok { color: var(--success); }
+
+  #popupOverlay {
+    position: fixed; inset: 0; z-index: 1000;
+    background: rgba(4,4,8,.65); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity .2s ease;
+  }
+  #popupOverlay.show { opacity: 1; pointer-events: auto; }
+  .popup-card {
+    background: #12141F; border: 1px solid var(--border); border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.6);
+    padding: 34px 36px; max-width: 340px; text-align: center;
+    transform: scale(.9); transition: transform .2s ease;
+  }
+  #popupOverlay.show .popup-card { transform: scale(1); }
+  .popup-icon {
+    width: 58px; height: 58px; border-radius: 50%; margin: 0 auto 16px;
+    display: flex; align-items: center; justify-content: center; font-size: 26px;
+    animation: pop .35s ease;
+  }
+  .popup-icon.success { background: var(--success-bg); color: var(--success); box-shadow: 0 0 0 6px rgba(47,230,160,.08); }
+  .popup-icon.error { background: var(--danger-bg); color: var(--danger); box-shadow: 0 0 0 6px rgba(255,93,122,.08); }
+  @keyframes pop { 0% { transform: scale(.4); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  .popup-title { font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+  .popup-msg { font-size: 13.5px; color: var(--text-muted); line-height: 1.5; }
+  .popup-close {
+    margin-top: 20px; background: var(--surface-strong); border: 1px solid var(--border);
+    color: var(--text); font-family: inherit; font-size: 13px; font-weight: 600;
+    padding: 9px 20px; border-radius: 10px; cursor: pointer;
+  }
+  .popup-close:hover { background: rgba(255,255,255,.1); }
+
+  #toastBox { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 999; max-width: 360px; }
+  .toast {
+    background: #12141F; border: 1px solid var(--border); border-left: 4px solid var(--violet);
+    border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.5); padding: 13px 17px;
+    font-size: 13px; font-weight: 500; color: var(--text); display: flex; gap: 10px; align-items: flex-start;
+    opacity: 0; transform: translateX(20px); transition: opacity .25s ease, transform .25s ease;
+  }
+  .toast.show { opacity: 1; transform: translateX(0); }
+  .toast.success { border-left-color: var(--success); }
+  .toast.error { border-left-color: var(--danger); }
+  .toast.info { border-left-color: var(--violet); }
+
+  @media (max-width: 640px) {
+    header { padding: 12px 16px; }
+    main { padding: 0 14px; }
+    .hero { padding: 40px 16px 10px; }
+    .field-row { flex-direction: column; gap: 0; }
+    #toastBox { left: 12px; right: 12px; max-width: none; }
+  }
+</style>
+</head>
+<body>
+<div class="grid-overlay"></div>
+
+<header>
+  <div class="brand">
+    <div class="brand-mark">VC</div>
+    <div class="brand-text">
+      <h1>VoteChain</h1>
+      <div class="tag">Decentralized Voting &amp; Governance</div>
+    </div>
+  </div>
+  <div class="wallet-area" id="walletArea">
+    <button class="btn" id="connectBtn">Connect Wallet</button>
+  </div>
+</header>
+
+<section class="hero">
+  <span class="eyebrow">● Live on-chain</span>
+  <h2>Vote with confidence.<br><span class="grad">Verified on the blockchain.</span></h2>
+  <p>Every ballot is cast, tallied, and locked in by a smart contract — no intermediaries, no tampering, fully auditable.</p>
+  <div class="stat-row">
+    <div class="stat-chip"><div class="v" id="statElections">—</div><div class="k">Elections</div></div>
+    <div class="stat-chip"><div class="v" id="statNetwork">—</div><div class="k">Network</div></div>
+    <div class="stat-chip"><div class="v" id="statBalance">—</div><div class="k">Your Balance</div></div>
+  </div>
+</section>
+
+<main>
+
+  <div id="adminSection" hidden>
+    <div class="section-title">Organiser Panel</div>
+
+    <div class="card">
+      <h3 style="margin:0 0 4px;font-size:15.5px;">Create Election</h3>
+      <p style="margin:0;font-size:12.5px;color:var(--text-muted);">Only you can see this panel — you're the contract organiser.</p>
+      <label>Title</label>
+      <input id="ceTitle" placeholder="Class Representative Election" />
+      <label>Options (comma-separated, at least 2)</label>
+      <input id="ceOptions" placeholder="Alice, Bob" />
+      <div id="ceOptionsPreview" class="chip-preview"></div>
+      <div class="field-row">
+        <div>
+          <label>Duration (minutes from now)</label>
+          <input id="ceDuration" type="number" value="60" min="1" />
+        </div>
+      </div>
+      <button class="btn" id="createElectionBtn" style="margin-top:18px;">Create Election</button>
+    </div>
+
+    <div class="card">
+      <h3 style="margin:0 0 4px;font-size:15.5px;">Register Voter</h3>
+      <label>Election</label>
+      <select id="rvElection"></select>
+      <label>Voter address</label>
+      <input id="rvAddress" placeholder="0x..." />
+      <button class="btn" id="registerVoterBtn" style="margin-top:18px;">Register Voter</button>
+    </div>
+  </div>
+
+  <div class="section-title">Elections</div>
+  <div id="electionsGrid" class="elections-grid">
+    <div class="card empty-state" id="electionsEmpty">
+      <div class="icon">🗳️</div>
+      <div>Connect your wallet to view elections.</div>
+    </div>
+  </div>
+
+  <div class="section-title">Activity Log</div>
+  <div class="card">
+    <div id="log" class="log">Waiting for wallet connection…</div>
+  </div>
+
+</main>
+
+<div id="toastBox"></div>
+
+<div id="popupOverlay">
+  <div class="popup-card">
+    <div class="popup-icon" id="popupIcon"></div>
+    <div class="popup-title" id="popupTitle"></div>
+    <div class="popup-msg" id="popupMsg"></div>
+    <button class="popup-close" id="popupCloseBtn">OK</button>
+  </div>
+</div>
+
+<script>
+  const CONTRACT_ADDRESS = "0x10b01d3a747c0038D9F477aBf47cB63362234837";
+
+  const ABI = [
+    "function createElection(string title, string[] options, uint startTime, uint endTime) external returns (uint id)",
+    "function registerVoter(uint id, address voter) external",
+    "function castVote(uint id, uint optionIndex) external",
+    "function changeVote(uint id, uint newOptionIndex) external",
+    "function getResults(uint id) external view returns (string[] memory names, uint[] memory counts)",
+    "function getElectionInfo(uint id) external view returns (string memory title, string[] memory options, uint startTime, uint endTime)",
+    "function hasVotedIn(uint id, address voter) external view returns (bool)",
+    "function organiser() external view returns (address)",
+    "function electionCount() external view returns (uint)",
+    "event ElectionCreated(uint indexed id, string title, uint startTime, uint endTime)",
+    "event VoterRegistered(uint indexed id, address voter)",
+    "event VoteCast(uint indexed id, address indexed voter, uint optionIndex)",
+    "event VoteChanged(uint indexed id, address indexed voter, uint newOptionIndex)"
+  ];
+
+  const SEPOLIA_CHAIN_ID = 11155111n;
+  const LOCALHOST_CHAIN_ID = 31337n;
+  const ALLOWED_CHAIN_IDS = [SEPOLIA_CHAIN_ID, LOCALHOST_CHAIN_ID];
+  const BAR_COLORS = ["#7C5CFF", "#22E5C8", "#FF5FA8", "#FFC24B", "#5D8CFF", "#8CFF5D"];
+
+  const ERROR_MESSAGES = {
+    "not organiser": "Only the election organiser can do that.",
+    "no such election": "That election doesn't exist.",
+    "not eligible": "You're not registered to vote in this election yet.",
+    "not open yet": "Voting hasn't started yet for this election.",
+    "voting closed": "Voting has closed for this election.",
+    "already voted, use changeVote": "You've already voted — use Change Vote instead.",
+    "bad option": "That's not a valid option.",
+    "no existing vote": "You haven't voted yet, so there's nothing to change.",
+    "bad window": "The end time must be after the start time.",
+    "need at least 2 options": "An election needs at least two options."
+  };
+
+  let provider, signer, contract, userAddress, organiserAddress;
+  const elections = new Map();
+  const selectedOption = new Map();
+
+  const walletArea = document.getElementById("walletArea");
+  const electionsGrid = document.getElementById("electionsGrid");
+  const electionsEmpty = document.getElementById("electionsEmpty");
+  const adminSection = document.getElementById("adminSection");
+
+  renderWalletArea();
+
+  function log(msg, level = "line") {
+    const logEl = document.getElementById("log");
+    if (!logEl) return;
+    const time = new Date().toLocaleTimeString();
+    const span = document.createElement("div");
+    span.className = `line ${level === "line" ? "" : level}`;
+    span.textContent = `[${time}] ${msg}`;
+    logEl.appendChild(span);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function showPopup(type, title, message, autoCloseMs = 2500) {
+    const overlay = document.getElementById("popupOverlay");
+    const icon = document.getElementById("popupIcon");
+    icon.className = `popup-icon ${type}`;
+    icon.textContent = type === "success" ? "✓" : "⚠";
+    document.getElementById("popupTitle").textContent = title;
+    document.getElementById("popupMsg").textContent = message;
+    overlay.classList.add("show");
+    clearTimeout(overlay._timer);
+    if (autoCloseMs) overlay._timer = setTimeout(hidePopup, autoCloseMs);
+    log(`${title}: ${message}`, type === "success" ? "ok" : type === "error" ? "err" : "line");
+  }
+  function hidePopup() {
+    document.getElementById("popupOverlay").classList.remove("show");
+  }
+  document.getElementById("popupCloseBtn").onclick = hidePopup;
+  document.getElementById("popupOverlay").onclick = (e) => {
+    if (e.target.id === "popupOverlay") hidePopup();
+  };
+
+  function toast(message, type = "info") {
+    const box = document.getElementById("toastBox");
+    const el = document.createElement("div");
+    el.className = `toast ${type}`;
+    const icon = type === "success" ? "✓" : type === "error" ? "⚠" : "ℹ";
+    el.innerHTML = `<span>${icon}</span><span>${message}</span>`;
+    box.appendChild(el);
+    requestAnimationFrame(() => el.classList.add("show"));
+    setTimeout(() => {
+      el.classList.remove("show");
+      setTimeout(() => el.remove(), 300);
+    }, 4500);
+    log(message, type === "success" ? "ok" : type === "error" ? "err" : "line");
+  }
+
+  function friendlyError(err) {
+    const raw = err?.reason || err?.shortMessage || err?.info?.error?.message || err?.message || "Something went wrong.";
+    for (const key in ERROR_MESSAGES) {
+      if (raw.includes(key)) return ERROR_MESSAGES[key];
+    }
+    if (raw.includes("user rejected") || raw.includes("ACTION_REJECTED")) return "Transaction was cancelled.";
+    return raw.length > 140 ? "Something went wrong. Check the browser console for details." : raw;
+  }
+
+  function formatAddress(addr) {
+    return addr.slice(0, 6) + "…" + addr.slice(-4);
+  }
+
+  function formatDuration(totalSeconds) {
+    if (totalSeconds <= 0) return "0s";
+    const d = Math.floor(totalSeconds / 86400);
+    const h = Math.floor((totalSeconds % 86400) / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = Math.floor(totalSeconds % 60);
+    if (d > 0) return `${d}d ${h}h`;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  }
+
+  function electionStatus(e) {
+    const now = Math.floor(Date.now() / 1000);
+    if (now < e.startTime) return { state: "pending", label: "Not started", note: `Opens in ${formatDuration(e.startTime - now)}` };
+    if (now < e.endTime) return { state: "open", label: "Open", note: `Closes in ${formatDuration(e.endTime - now)}` };
+    return { state: "closed", label: "Closed", note: "Voting has ended" };
+  }
+
+  function renderWalletArea() {
+    if (!userAddress) {
+      walletArea.innerHTML = `<button class="btn" id="connectBtn">Connect Wallet</button>`;
+      document.getElementById("connectBtn").onclick = connectWallet;
+      return;
+    }
+    walletArea.innerHTML = `
+      <span class="pill" id="networkPill"><span class="dot grey"></span> …</span>
+      <span class="pill" id="balancePill">…</span>
+      <span class="pill">${formatAddress(userAddress)}</span>
+      <button class="btn secondary small" id="disconnectBtn">Disconnect</button>
+    `;
+    document.getElementById("disconnectBtn").onclick = disconnectWallet;
+  }
+
+  async function refreshHeaderInfo() {
+    if (!provider || !userAddress) return;
+    const network = await provider.getNetwork();
+    const balance = await provider.getBalance(userAddress);
+    const netPill = document.getElementById("networkPill");
+    const balPill = document.getElementById("balancePill");
+    const ok = ALLOWED_CHAIN_IDS.includes(network.chainId);
+    const name = network.chainId === LOCALHOST_CHAIN_ID ? "Hardhat Local"
+               : network.chainId === SEPOLIA_CHAIN_ID ? "Sepolia"
+               : `Chain ${network.chainId}`;
+    if (netPill) netPill.innerHTML = `<span class="dot ${ok ? "green" : "red"}"></span> ${name}`;
+    const balEth = Number(ethers.formatEther(balance)).toFixed(3);
+    if (balPill) balPill.textContent = `${balEth} ETH`;
+
+    document.getElementById("statNetwork").textContent = name;
+    document.getElementById("statBalance").textContent = `${balEth} ETH`;
+    return { ok, chainId: network.chainId };
+  }
+
+  function withTimeout(promise, ms, timeoutMessage) {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error(timeoutMessage)), ms))
+    ]);
+  }
+
+  async function connectWallet() {
+    log("Connect Wallet clicked.");
+    if (!window.ethereum) {
+      log("window.ethereum is not present — MetaMask not detected in this page context.", "err");
+      alert("MetaMask not found. Please install it from metamask.io");
+      return;
+    }
+    const btn = document.getElementById("connectBtn");
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span> Connecting…`;
+    try {
+      provider = new ethers.BrowserProvider(window.ethereum);
+      log("Requesting accounts from MetaMask…");
+      await withTimeout(provider.send("eth_requestAccounts", []), 20000, "MetaMask didn't respond in time — likely a duplicate tab. Close other tabs of this page, restart your browser, and try again in a single tab.");
+      log("Accounts granted. Getting signer…");
+      signer = await provider.getSigner();
+      userAddress = await signer.getAddress();
+      log(`Signer ready: ${userAddress}`);
+
+      renderWalletArea();
+      const netInfo = await refreshHeaderInfo();
+      log("Network/balance check complete.");
+
+      if (!netInfo.ok) {
+        showPopup("error", "Not Connected", `Wrong network (chain ${netInfo.chainId}). Switch MetaMask to Sepolia or your local Hardhat network, then try again.`, 0);
+        electionsEmpty.querySelector("div:last-child").textContent = "Wrong network — switch MetaMask to Sepolia or Hardhat Local.";
+        return;
+      }
+
+      if (CONTRACT_ADDRESS.startsWith("PASTE_")) {
+        showPopup("error", "Not Connected", "Set CONTRACT_ADDRESS at the top of the <script> block first.", 0);
+        return;
+      }
+
+      log(`Checking for contract code at ${CONTRACT_ADDRESS} on this network…`);
+      const code = await provider.getCode(CONTRACT_ADDRESS);
+      if (code === "0x") {
+        const netName = netInfo.chainId === LOCALHOST_CHAIN_ID ? "Hardhat Local" : "Sepolia";
+        showPopup("error", "No Contract Found", `There's no contract at ${formatAddress(CONTRACT_ADDRESS)} on ${netName}. This contract is deployed on a different network — switch MetaMask to the correct one and try again.`, 0);
+        electionsEmpty.querySelector("div:last-child").textContent = `No contract found on ${netName} — switch networks and reconnect.`;
+        return;
+      }
+
+      contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+      organiserAddress = await contract.organiser();
+
+      adminSection.hidden = organiserAddress.toLowerCase() !== userAddress.toLowerCase();
+
+      showPopup("success", "Connected!", `You're connected as ${formatAddress(userAddress)}.`);
+      attachContractListeners();
+      await loadAllElections();
+    } catch (err) {
+      showPopup("error", "Not Connected", friendlyError(err), 0);
+    } finally {
+      const b = document.getElementById("connectBtn");
+      if (b) { b.disabled = false; b.textContent = "Connect Wallet"; }
+    }
+  }
+
+  function disconnectWallet() {
+    provider = signer = contract = userAddress = organiserAddress = undefined;
+    elections.clear();
+    adminSection.hidden = true;
+    renderWalletArea();
+    electionsGrid.innerHTML = "";
+    electionsEmpty.querySelector("div:last-child").textContent = "Connect your wallet to view elections.";
+    electionsGrid.appendChild(electionsEmpty);
+    document.getElementById("statElections").textContent = "—";
+    document.getElementById("statNetwork").textContent = "—";
+    document.getElementById("statBalance").textContent = "—";
+    toast("Disconnected.", "info");
+  }
+
+  if (window.ethereum) {
+    window.ethereum.on("chainChanged", () => window.location.reload());
+    window.ethereum.on("accountsChanged", () => window.location.reload());
+  }
+
+  document.getElementById("ceOptions").addEventListener("input", (e) => {
+    const opts = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
+    document.getElementById("ceOptionsPreview").innerHTML = opts.map(o => `<span>${o}</span>`).join("");
+  });
+
+  document.getElementById("createElectionBtn").onclick = async () => {
+    const btn = document.getElementById("createElectionBtn");
+    const title = document.getElementById("ceTitle").value.trim();
+    const options = document.getElementById("ceOptions").value.split(",").map(s => s.trim()).filter(Boolean);
+    const minutes = parseInt(document.getElementById("ceDuration").value, 10);
+
+    if (!title) return toast("Give the election a title.", "error");
+    if (options.length < 2) return toast("Enter at least two comma-separated options.", "error");
+    if (!minutes || minutes <= 0) return toast("Duration must be a positive number of minutes.", "error");
+
+    const now = Math.floor(Date.now() / 1000);
+    setLoading(btn, true, "Creating…");
+    try {
+      const tx = await contract.createElection(title, options, now, now + minutes * 60);
+      toast("Transaction sent — waiting for confirmation…", "info");
+      await tx.wait();
+      toast(`Election "${title}" created.`, "success");
+      document.getElementById("ceTitle").value = "";
+      document.getElementById("ceOptions").value = "";
+      document.getElementById("ceOptionsPreview").innerHTML = "";
+      await loadAllElections();
+    } catch (err) {
+      toast(friendlyError(err), "error");
+    } finally {
+      setLoading(btn, false, "Create Election");
+    }
+  };
+
+  document.getElementById("registerVoterBtn").onclick = async () => {
+    const btn = document.getElementById("registerVoterBtn");
+    const id = document.getElementById("rvElection").value;
+    const addr = document.getElementById("rvAddress").value.trim();
+    if (id === "") return toast("Create an election first.", "error");
+    if (!ethers.isAddress(addr)) return toast("Enter a valid wallet address.", "error");
+
+    setLoading(btn, true, "Registering…");
+    try {
+      const tx = await contract.registerVoter(id, addr);
+      toast("Transaction sent — waiting for confirmation…", "info");
+      await tx.wait();
+      toast(`Registered ${formatAddress(addr)} for "${elections.get(Number(id))?.title}".`, "success");
+      document.getElementById("rvAddress").value = "";
+    } catch (err) {
+      toast(friendlyError(err), "error");
+    } finally {
+      setLoading(btn, false, "Register Voter");
+    }
+  };
+
+  function setLoading(btn, loading, label) {
+    btn.disabled = loading;
+    btn.innerHTML = loading ? `<span class="spinner"></span> ${label}` : label;
+  }
+
+  function refreshElectionSelect() {
+    const select = document.getElementById("rvElection");
+    const prev = select.value;
+    select.innerHTML = [...elections.values()]
+      .map(e => `<option value="${e.id}">#${e.id} — ${e.title}</option>`)
+      .join("");
+    if (prev) select.value = prev;
+  }
+
+  async function loadAllElections() {
+    const count = Number(await contract.electionCount());
+    document.getElementById("statElections").textContent = count;
+    if (count === 0) {
+      electionsGrid.innerHTML = "";
+      electionsEmpty.querySelector(".icon").textContent = "🗳️";
+      electionsEmpty.querySelector("div:last-child").textContent = "No elections yet.";
+      electionsGrid.appendChild(electionsEmpty);
+      return;
+    }
+    for (let id = 0; id < count; id++) {
+      if (!elections.has(id)) {
+        const [title, options, startTime, endTime] = await contract.getElectionInfo(id);
+        elections.set(id, { id, title, options, startTime: Number(startTime), endTime: Number(endTime) });
+      }
+    }
+    refreshElectionSelect();
+    renderAllCards();
+    for (const id of elections.keys()) await refreshElectionDynamic(id);
+  }
+
+  function renderAllCards() {
+    electionsGrid.innerHTML = "";
+    [...elections.values()].sort((a, b) => a.id - b.id).forEach(e => {
+      const card = document.createElement("div");
+      card.className = "card election-card";
+      card.id = `election-${e.id}`;
+      electionsGrid.appendChild(card);
+      renderCardShell(e.id);
+    });
+  }
+
+  function renderCardShell(id) {
+    const e = elections.get(id);
+    const card = document.getElementById(`election-${id}`);
+    if (!card) return;
+    const status = electionStatus(e);
+    card.innerHTML = `
+      <div class="election-head">
+        <div class="election-title-row">
+          <div>
+            <h3>${e.title}</h3>
+            <div class="time-note" data-role="time-note">${status.note}</div>
+          </div>
+          <span class="status-badge ${status.state}" data-role="badge">${status.label}</span>
+        </div>
+      </div>
+      <div class="election-body" data-role="body">
+        <div style="padding:16px 0;color:var(--text-muted);font-size:13px;">Loading…</div>
+      </div>
+    `;
+  }
+
+  function updateCountdownsOnly() {
+    for (const [id, e] of elections) {
+      const card = document.getElementById(`election-${id}`);
+      if (!card) continue;
+      const status = electionStatus(e);
+      const badge = card.querySelector('[data-role="badge"]');
+      const note = card.querySelector('[data-role="time-note"]');
+      if (badge && badge.textContent !== status.label) {
+        refreshElectionDynamic(id);
+      } else if (note) {
+        note.textContent = status.note;
+      }
+    }
+  }
+  setInterval(updateCountdownsOnly, 1000);
+
+  async function refreshElectionDynamic(id) {
+    const e = elections.get(id);
+    if (!e || !contract) return;
+    const card = document.getElementById(`election-${id}`);
+    if (!card) return;
+
+    const status = electionStatus(e);
+    card.querySelector('[data-role="badge"]').className = `status-badge ${status.state}`;
+    card.querySelector('[data-role="badge"]').textContent = status.label;
+    card.querySelector('[data-role="time-note"]').textContent = status.note;
+
+    const [names, counts] = await contract.getResults(id);
+    const countsNum = counts.map(c => Number(c));
+    const total = countsNum.reduce((a, b) => a + b, 0);
+
+    const hasVoted = await contract.hasVotedIn(id, userAddress);
+    let currentChoice = null;
+    let eligible = true;
+
+    if (hasVoted) {
+      currentChoice = await getUserChoice(id, userAddress);
+    } else if (status.state === "open") {
+      eligible = await checkEligible(id);
+    }
+
+    const body = card.querySelector('[data-role="body"]');
+    body.innerHTML = buildBodyHtml(e, names, countsNum, total, status, hasVoted, currentChoice, eligible);
+    wireCardEvents(id, e, hasVoted, currentChoice, status, eligible);
+  }
+
+  async function getUserChoice(id, addr) {
+    try {
+      const [castEvents, changeEvents] = await Promise.all([
+        contract.queryFilter(contract.filters.VoteCast(id, addr)),
+        contract.queryFilter(contract.filters.VoteChanged(id, addr))
+      ]);
+      const all = [...castEvents, ...changeEvents];
+      if (all.length === 0) return null;
+      all.sort((a, b) => (a.blockNumber - b.blockNumber) || (a.index - b.index));
+      const last = all[all.length - 1];
+      return Number(last.args.optionIndex ?? last.args[2]);
+    } catch {
+      return null;
+    }
+  }
+
+  async function checkEligible(id) {
+    try {
+      await contract.castVote.staticCall(id, 0);
+      return true;
+    } catch (err) {
+      const reason = err?.reason || err?.shortMessage || err?.message || "";
+      return !reason.includes("not eligible");
+    }
+  }
+
+  function buildBodyHtml(e, names, countsNum, total, status, hasVoted, currentChoice, eligible) {
+    let notice = "";
+    let optionsHtml = "";
+    let actionHtml = "";
+
+    if (status.state === "closed") {
+      notice = `<div class="notice warn">⚠ Voting has closed for this election.</div>`;
+    } else if (status.state === "pending") {
+      notice = `<div class="notice info">ℹ Voting hasn't opened yet.</div>`;
+    } else if (!hasVoted && !eligible) {
+      notice = `<div class="notice warn">⚠ You're not registered to vote in this election yet.</div>`;
+    } else if (hasVoted) {
+      const label = currentChoice !== null ? names[currentChoice] : "an option";
+      notice = `<div class="notice success">✓ You voted for <strong>${label}</strong>.</div>`;
+    }
+
+    const canInteract = status.state === "open" && (hasVoted || eligible);
+    if (canInteract) {
+      const preselect = selectedOption.has(e.id) ? selectedOption.get(e.id) : currentChoice;
+      optionsHtml = `<div class="option-list" data-role="options">` + names.map((name, i) => `
+        <div class="option-chip ${preselect === i ? "selected" : ""}" data-index="${i}">
+          <span>${name}</span>
+          ${hasVoted && currentChoice === i ? '<span class="current-tag">Current</span>' : ""}
+        </div>
+      `).join("") + `</div>`;
+      actionHtml = `<button class="btn full" data-role="voteBtn">${hasVoted ? "Change Vote" : "Cast Vote"}</button>`;
+    }
+
+    const resultsHtml = `
+      <div class="results">
+        <div class="results-title">Live Results${total > 0 ? ` · ${total} vote${total === 1 ? "" : "s"}` : ""}</div>
+        ${names.map((name, i) => {
+          const pct = total > 0 ? (countsNum[i] / total) * 100 : 0;
+          return `
+            <div class="result-row">
+              <div class="r-label"><span>${name}</span><span class="r-count">${countsNum[i]} vote${countsNum[i] === 1 ? "" : "s"} · ${pct.toFixed(0)}%</span></div>
+              <div class="bar-bg"><div class="bar-fill" style="width:${pct}%;"></div></div>
+            </div>`;
+        }).join("")}
+      </div>
+    `;
+
+    return notice + optionsHtml + actionHtml + resultsHtml;
+  }
+
+  function wireCardEvents(id, e, hasVoted, currentChoice, status, eligible) {
+    const card = document.getElementById(`election-${id}`);
+    const optionsEl = card.querySelector('[data-role="options"]');
+    const voteBtn = card.querySelector('[data-role="voteBtn"]');
+    if (!optionsEl || !voteBtn) return;
+
+    if (!selectedOption.has(id)) {
+      selectedOption.set(id, currentChoice !== null ? currentChoice : null);
+    }
+
+    optionsEl.querySelectorAll(".option-chip").forEach(chip => {
+      chip.onclick = () => {
+        selectedOption.set(id, Number(chip.dataset.index));
+        optionsEl.querySelectorAll(".option-chip").forEach(c => c.classList.remove("selected"));
+        chip.classList.add("selected");
+      };
+    });
+
+    voteBtn.onclick = async () => {
+      const choice = selectedOption.get(id);
+      if (choice === null || choice === undefined) return toast("Pick an option first.", "error");
+      setLoading(voteBtn, true, hasVoted ? "Changing…" : "Voting…");
+      try {
+        const tx = hasVoted ? await contract.changeVote(id, choice) : await contract.castVote(id, choice);
+        toast("Transaction sent — waiting for confirmation…", "info");
+        await tx.wait();
+        toast(hasVoted ? "Vote changed." : "Vote cast — thanks for voting!", "success");
+        selectedOption.delete(id);
+        await refreshElectionDynamic(id);
+      } catch (err) {
+        toast(friendlyError(err), "error");
+        setLoading(voteBtn, false, hasVoted ? "Change Vote" : "Cast Vote");
+      }
+    };
+  }
+
+  function attachContractListeners() {
+    contract.on("ElectionCreated", () => loadAllElections());
+    contract.on("VoterRegistered", (id, voter) => {
+      if (voter.toLowerCase() === userAddress.toLowerCase()) refreshElectionDynamic(Number(id));
+    });
+    contract.on("VoteCast", (id) => refreshElectionDynamic(Number(id)));
+    contract.on("VoteChanged", (id) => refreshElectionDynamic(Number(id)));
+  }
+
+  setInterval(() => { if (userAddress) refreshHeaderInfo(); }, 15000);
+</script>
+
+</body>
+</html>
